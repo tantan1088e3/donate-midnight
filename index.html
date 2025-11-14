@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Scavenger Seed Manager</title>
+<style>
+body { font-family: Arial; background:#0d141c; color:#e7eef5; padding:20px; }
+h1 { margin:0 0 20px; }
+.box { background:#16202b; padding:15px; border-radius:10px; margin-bottom:20px; border:1px solid #233241; }
+.seed-group { margin-bottom:12px; padding:10px; border:1px solid #2a3c4d; border-radius:8px; }
+.seed-header { display:flex; justify-content:space-between; align-items:center; }
+.seed-title { font-size:16px; font-weight:bold; }
+.btn { padding:6px 10px; border:0; border-radius:6px; cursor:pointer; }
+.btn-blue { background:#0ea5a0; color:#fff; }
+.btn-red { background:#e54848; color:#fff; }
+.btn-small { padding:4px 7px; font-size:12px; }
+input[type=text] { width:100%; padding:6px; border-radius:6px; border:1px solid #2a3c4d; background:#0b1620; color:#fff; }
+.addr-out { font-family:monospace; font-size:13px; word-break:break-all; margin-top:4px; }
+.copy-msg { font-size:12px; color:#7fffd4; margin-left:6px; opacity:0; transition:0.3s; }
+.copy-msg.show { opacity:1; }
+.sig-input { padding:4px; border-radius:6px; border:1px solid #2a3c4d; background:#0b1620; color:#fff; margin-top:4px; }
+.curl-display { font-family:monospace; font-size:12px; margin-top:4px; word-break:break-all; }
+</style>
+</head>
+<body>
+<h1>Scavenger Seed Manager</h1>
+
+<button class="btn btn-blue" onclick="exportShell()">Xuất file .sh</button>
+
+<div class="box">
+    <h3>Thêm Seed mới</h3>
+    <input id="seedName" type="text" placeholder="Nhập tên seed (VD: Seed 1)">
+    <button class="btn btn-blue" onclick="addSeed()">Thêm Seed</button>
+</div>
+
+<div id="seedList"></div>
+
+<div class="box">
+    <h3>Địa chỉ nhận chung (Receiver):</h3>
+    <input id="receiver" type="text" placeholder="addr1...">
+</div>
+
+<button class="btn btn-blue" onclick="generate()">Generate danh sách</button>
+<button class="btn btn-blue" onclick="exportShell()">Xuất file .sh</button>
+
+<div id="output" class="box" style="margin-top:20px;"></div>
+
+<script>
+let seeds = [];
+
+// Thêm seed
+function addSeed() {
+    const name = document.getElementById("seedName").value.trim();
+    if (!name) return alert("Nhập tên seed!");
+    seeds.push({ name, children: [] });
+    document.getElementById("seedName").value = "";
+    renderSeeds();
+}
+
+// Thêm child
+function addChild(seedIndex) {
+    const recv = document.getElementById("receiver").value.trim();
+    if(!recv) return alert("Nhập địa chỉ receiver trước khi thêm child!");
+    seeds[seedIndex].children.push("");
+    renderSeeds();
+}
+
+// Xóa child
+function removeChild(seedIndex, childIndex) {
+    seeds[seedIndex].children.splice(childIndex, 1);
+    renderSeeds();
+}
+
+// Import file
+function importFile(seedIndex, fileInput){
+    const recv = document.getElementById("receiver").value.trim();
+    if(!recv){
+        alert("Nhập địa chỉ receiver trước khi import file!");
+        fileInput.value="";
+        return;
+    }
+    const file = fileInput.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e){
+        const lines = e.target.result.split(/\r?\n/).map(l=>l.trim()).filter(l=>l);
+        seeds[seedIndex].children.push(...lines);
+        renderSeeds();
+        fileInput.value="";
+    };
+    reader.readAsText(file);
+}
+
+// Render seeds & children
+function renderSeeds(){
+    const container = document.getElementById("seedList");
+    container.innerHTML = "";
+
+    seeds.forEach((seed,i)=>{
+        const div = document.createElement("div");
+        div.className="seed-group";
+        div.innerHTML=`
+            <div class="seed-header">
+                <div class="seed-title">${seed.name}</div>
+                <div>
+                    <button class="btn btn-blue btn-small" onclick="addChild(${i})">+ Thêm địa chỉ</button>
+                    <input type="file" accept=".txt" onchange="importFile(${i},this)" style="margin-left:6px;">
+                </div>
+            </div>
+            <div id="children-${i}"></div>
+        `;
+        container.appendChild(div);
+
+        const childBox = document.getElementById(`children-${i}`);
+        seed.children.forEach((child,ci)=>{
+            const row = document.createElement("div");
+            row.style.marginBottom="10px";
+
+            row.innerHTML=`
+                <div class="addr-out">${child}</div>
+                <button class="btn btn-blue btn-small copy-sender-btn">Copy Sender</button>
+                <span class="copy-msg">Copied!</span>
+                <button class="btn btn-blue btn-small copy-payload-btn">Copy Payload</button>
+                <span class="copy-msg">Copied!</span>
+                <button class="btn btn-blue btn-small copy-curl-btn" disabled>Copy Curl (Linux)</button>
+                <span class="copy-msg">Copied!</span>
+                <input type="text" class="sig-input" placeholder="Nhập chữ ký...">
+                <div class="addr-out curl-display"></div>
+                <hr style="opacity:0.1;">
+            `;
+
+            childBox.appendChild(row);
+
+            const sigInput = row.querySelector(".sig-input");
+            const curlBtn = row.querySelector(".copy-curl-btn");
+            const curlDisplay = row.querySelector(".curl-display");
+            const copySenderBtn = row.querySelector(".copy-sender-btn");
+            const copyPayloadBtn = row.querySelector(".copy-payload-btn");
+
+            // Copy Sender
+            copySenderBtn.onclick = ()=>{
+                navigator.clipboard.writeText(child).then(()=>{
+                    const msg = copySenderBtn.nextElementSibling;
+                    msg.classList.add("show");
+                    setTimeout(()=>msg.classList.remove("show"),900);
+                });
+            };
+
+            // Copy Payload
+            copyPayloadBtn.onclick = ()=>{
+                const recv = document.getElementById("receiver").value.trim();
+                if(!recv) return alert("Nhập receiver trước!");
+                const payload = `Assign accumulated Scavenger rights to: ${recv}`;
+                navigator.clipboard.writeText(payload).then(()=>{
+                    const msg = copyPayloadBtn.nextElementSibling;
+                    msg.classList.add("show");
+                    setTimeout(()=>msg.classList.remove("show"),900);
+                });
+            };
+
+            // Nhập chữ ký → update Curl
+            sigInput.addEventListener("input", ()=>{
+                const sig = sigInput.value.trim();
+                const recv = document.getElementById("receiver").value.trim();
+                if(sig && recv){
+                    const curlCmd = `curl -L -X POST "https://scavenger.prod.gd.midnighttge.io/donate_to/${recv}/${child}/${sig}" -d "{}"`;
+                    curlDisplay.textContent = curlCmd;
+                    curlBtn.dataset.text = curlCmd;
+                    curlBtn.disabled = false;
+                } else {
+                    curlDisplay.textContent = "";
+                    curlBtn.dataset.text = "";
+                    curlBtn.disabled = true;
+                }
+            });
+
+            // Copy Curl
+            curlBtn.onclick = ()=>{
+                const text = curlBtn.dataset.text;
+                if(!text) return;
+                navigator.clipboard.writeText(text).then(()=>{
+                    const msg = curlBtn.nextElementSibling;
+                    msg.classList.add("show");
+                    setTimeout(()=>msg.classList.remove("show"),900);
+                });
+            };
+        });
+    });
+}
+
+// Generate danh sách summary
+function generate(){
+    const out = document.getElementById("output");
+    out.innerHTML="";
+    seeds.forEach(seed=>{
+        const title = document.createElement("h3");
+        title.textContent=`${seed.name} — ${seed.children.length} ví`;
+        out.appendChild(title);
+        seed.children.forEach(addr=>{
+            const row = document.createElement("div");
+            row.style.marginBottom="10px";
+            row.innerHTML = `<div class="addr-out">${addr}</div>`;
+            out.appendChild(row);
+        });
+    });
+}
+
+// Xuất file .sh
+function exportShell(){
+    const recv = document.getElementById("receiver").value.trim();
+    if(!recv) return alert("Nhập receiver trước!");
+
+    let script = "#!/bin/bash\n\n";
+    script += "echo \"🚀 Bắt đầu donate...\"\n\n";
+
+    seeds.forEach((seed)=>{
+        seed.children.forEach((addr,index)=>{
+            const seedIndex = seeds.indexOf(seed);
+            const rowDiv = document.getElementById(`children-${seedIndex}`).children[index];
+            const sigInput = rowDiv.querySelector(".sig-input");
+            const sig = sigInput.value.trim();
+            if(!sig) return; // bỏ qua nếu chưa có chữ ký
+            const sender = seed.children[index];
+            script += `curl -L -X POST "https://scavenger.prod.gd.midnighttge.io/donate_to/${recv}/${sender}/${sig}" -d "{}"\n`;
+			script += "echo -e '\\n-----------------------------------------------------------------------------------------\\n'\n";
+            script += "sleep 1\n"; // Delay 1 giây giữa các lệnh
+        });
+    });
+
+    const blob = new Blob([script], {type:"text/plain"});
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "donate_all.sh";
+    link.click();
+}
+
+</script>
+</body>
+</html>
