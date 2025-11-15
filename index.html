@@ -2,7 +2,8 @@
 <html lang="vi">
 <head>
 <meta charset="utf-8">
-<title>Scavenger Seed Manager</title>
+<title>Scavenger Seed Manager — Yoroi Sign</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
 body { font-family: Arial; background:#0d141c; color:#e7eef5; padding:20px; }
 h1 { margin:0 0 20px; }
@@ -18,27 +19,25 @@ input[type=text] { width:100%; padding:6px; border-radius:6px; border:1px solid 
 .addr-out { font-family:monospace; font-size:13px; word-break:break-all; margin-top:4px; }
 .copy-msg { font-size:12px; color:#7fffd4; margin-left:6px; opacity:0; transition:0.3s; }
 .copy-msg.show { opacity:1; }
-.sig-input { padding:4px; border-radius:6px; border:1px solid #2a3c4d; background:#0b1620; color:#fff; margin-top:4px; }
-.curl-display { font-family:monospace; font-size:12px; margin-top:4px; word-break:break-all; }
+.sig-input { padding:6px; border-radius:6px; border:1px solid #2a3c4d; background:#0b1620; color:#fff; margin-top:8px; width:100%; }
+.curl-display { font-family:monospace; font-size:12px; margin-top:8px; word-break:break-all; background:#0b1620; padding:8px; border-radius:6px; border:1px solid #233241; }
+.row-actions { margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.small-muted { font-size:12px; color:#9fb1c9; }
+.hr { height:1px; background:rgba(255,255,255,0.04); margin:10px 0; border-radius:2px; }
 </style>
 </head>
 <body>
-<h1>Scavenger Seed Manager</h1>
+<h1>Scavenger Seed Manager — Yoroi Sign</h1>
 
 <button class="btn btn-blue" onclick="exportShell()">Xuất file .sh</button>
-
 <div class="box">
-    <h3>Thêm Seed mới</h3>
-    <input id="seedName" type="text" placeholder="Nhập tên seed (VD: Seed 1)">
-    <button class="btn btn-blue" onclick="addSeed()">Thêm Seed</button>
+    <h3>Địa chỉ nhận(Receiver):</h3>
+    <input id="receiver" type="text" placeholder="addr1...">
 </div>
 
 <div id="seedList"></div>
 
-<div class="box">
-    <h3>Địa chỉ nhận chung (Receiver):</h3>
-    <input id="receiver" type="text" placeholder="addr1...">
-</div>
+
 
 <button class="btn btn-blue" onclick="generate()">Generate danh sách</button>
 <button class="btn btn-blue" onclick="exportShell()">Xuất file .sh</button>
@@ -46,9 +45,28 @@ input[type=text] { width:100%; padding:6px; border-radius:6px; border:1px solid 
 <div id="output" class="box" style="margin-top:20px;"></div>
 
 <script>
+/*
+  Phiên bản: Yoroi sign (CIP-30 signData)
+  Chức năng: Sign một địa chỉ bằng Yoroi -> auto fill signature -> gen curl
+  Lưu ý: Người dùng phải cài và mở Yoroi extension, cho phép dApp khi prompt xuất hiện.
+*/
+
 let seeds = [];
 
-// Thêm seed
+// -------- helpers ----------
+function hexEncode(str){
+  // utf-8 -> hex
+  const encoder = new TextEncoder();
+  const bytes = encoder.encode(str);
+  return Array.from(bytes).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+function showCopyMsg(el){
+  el.classList.add("show");
+  setTimeout(()=>el.classList.remove("show"),900);
+}
+
+// -------- seed management ----------
 function addSeed() {
     const name = document.getElementById("seedName").value.trim();
     if (!name) return alert("Nhập tên seed!");
@@ -57,21 +75,19 @@ function addSeed() {
     renderSeeds();
 }
 
-// Thêm child
 function addChild(seedIndex) {
     const recv = document.getElementById("receiver").value.trim();
     if(!recv) return alert("Nhập địa chỉ receiver trước khi thêm child!");
-    seeds[seedIndex].children.push("");
+    seeds[seedIndex].children.push(""); // empty placeholder -> user paste or import
     renderSeeds();
 }
 
-// Xóa child
 function removeChild(seedIndex, childIndex) {
     seeds[seedIndex].children.splice(childIndex, 1);
     renderSeeds();
 }
 
-// Import file
+// Import file to seed children (txt list)
 function importFile(seedIndex, fileInput){
     const recv = document.getElementById("receiver").value.trim();
     if(!recv){
@@ -91,7 +107,7 @@ function importFile(seedIndex, fileInput){
     reader.readAsText(file);
 }
 
-// Render seeds & children
+// ---------- render ----------
 function renderSeeds(){
     const container = document.getElementById("seedList");
     container.innerHTML = "";
@@ -101,11 +117,9 @@ function renderSeeds(){
         div.className="seed-group";
         div.innerHTML=`
             <div class="seed-header">
-                <div class="seed-title">${seed.name}</div>
-                <div>
-                    <button class="btn btn-blue btn-small" onclick="addChild(${i})">+ Thêm địa chỉ</button>
-                    <input type="file" accept=".txt" onchange="importFile(${i},this)" style="margin-left:6px;">
-                </div>
+                <div class="seed-title">${seed.name}
+                    <input type="file" accept=".txt" onchange="importFile(${i},this)" style="margin-left:6px;"></div>
+                
             </div>
             <div id="children-${i}"></div>
         `;
@@ -116,73 +130,137 @@ function renderSeeds(){
             const row = document.createElement("div");
             row.style.marginBottom="10px";
 
+            // If child is empty, show placeholder input for paste
+            const childDisplay = child || "";
             row.innerHTML=`
-                <div class="addr-out">${child}</div>
-                <button class="btn btn-blue btn-small copy-sender-btn">Copy Sender</button>
-                <span class="copy-msg">Copied!</span>
-                <button class="btn btn-blue btn-small copy-payload-btn">Copy Payload</button>
-                <span class="copy-msg">Copied!</span>
-                <button class="btn btn-blue btn-small copy-curl-btn" disabled>Copy Curl (Linux)</button>
-                <span class="copy-msg">Copied!</span>
-                <input type="text" class="sig-input" placeholder="Nhập chữ ký...">
-                <div class="addr-out curl-display"></div>
-                <hr style="opacity:0.1;">
+                <div class="addr-out" id="addr-${i}-${ci}">${childDisplay}</div>
+                <div class="row-actions">
+                    <button class="btn btn-blue btn-small sign-yoroi-btn">Sign with Yoroi</button>
+                    <span class="copy-msg">Signed!</span>
+
+                    <button class="btn btn-blue btn-small copy-curl-btn" disabled>Copy Curl</button>
+                    <span class="copy-msg">Copied!</span>
+
+                    <button class="btn btn-red btn-small remove-child-btn">Xóa</button>
+                </div>
+
+                <input type="text" class="sig-input" placeholder="(Signature sẽ hiện ở đây nếu đã ký)" id="sig-${i}-${ci}">
+                <div class="curl-display" id="curl-${i}-${ci}"></div>
+
+                <div class="hr"></div>
             `;
 
             childBox.appendChild(row);
 
-            const sigInput = row.querySelector(".sig-input");
-            const curlBtn = row.querySelector(".copy-curl-btn");
-            const curlDisplay = row.querySelector(".curl-display");
+            // allow editing address if empty: click to edit
+            const addrDiv = row.querySelector(`#addr-${i}-${ci}`);
+            if(!child){
+                const ip = document.createElement("input");
+                ip.type="text";
+                ip.placeholder="Dán địa chỉ sender ở đây";
+                ip.style.marginTop="6px";
+                ip.style.width="100%";
+                ip.style.padding="6px";
+                ip.style.borderRadius="6px";
+                ip.style.background="#071019";
+                ip.style.border="1px solid #233241";
+                ip.style.color="#fff";
+                addrDiv.appendChild(ip);
+                ip.addEventListener("change", ()=>{
+                    const val = ip.value.trim();
+                    seeds[i].children[ci] = val;
+                    renderSeeds();
+                });
+            }
+
             const copySenderBtn = row.querySelector(".copy-sender-btn");
             const copyPayloadBtn = row.querySelector(".copy-payload-btn");
+            const signBtn = row.querySelector(".sign-yoroi-btn");
+            const copyCurlBtn = row.querySelector(".copy-curl-btn");
+            const removeBtn = row.querySelector(".remove-child-btn");
+            const sigInput = row.querySelector(`#sig-${i}-${ci}`);
+            const curlDisplay = row.querySelector(`#curl-${i}-${ci}`);
 
-            // Copy Sender
-            copySenderBtn.onclick = ()=>{
-                navigator.clipboard.writeText(child).then(()=>{
-                    const msg = copySenderBtn.nextElementSibling;
-                    msg.classList.add("show");
-                    setTimeout(()=>msg.classList.remove("show"),900);
-                });
+            // Remove
+            removeBtn.onclick = ()=>{
+                removeChild(i,ci);
             };
 
-            // Copy Payload
-            copyPayloadBtn.onclick = ()=>{
+            // Sign with Yoroi (single address)
+            signBtn.onclick = async ()=>{
                 const recv = document.getElementById("receiver").value.trim();
+                const sender = seeds[i].children[ci];
                 if(!recv) return alert("Nhập receiver trước!");
-                const payload = `Assign accumulated Scavenger rights to: ${recv}`;
-                navigator.clipboard.writeText(payload).then(()=>{
-                    const msg = copyPayloadBtn.nextElementSibling;
-                    msg.classList.add("show");
-                    setTimeout(()=>msg.classList.remove("show"),900);
-                });
-            };
+                if(!sender) return alert("Chưa có địa chỉ sender!");
+                // payload message as plain text (same as payload copied earlier)
+                const message = `Assign accumulated Scavenger rights to: ${recv}`;
+                try {
+                    if (!window.cardano || !window.cardano.yoroi) {
+                        return alert("Không tìm thấy Yoroi extension. Vui lòng cài và mở Yoroi trước.");
+                    }
+                    // enable yoroi
+                    const api = await window.cardano.yoroi.enable();
 
-            // Nhập chữ ký → update Curl
-            sigInput.addEventListener("input", ()=>{
-                const sig = sigInput.value.trim();
-                const recv = document.getElementById("receiver").value.trim();
-                if(sig && recv){
-                    const curlCmd = `curl -L -X POST "https://scavenger.prod.gd.midnighttge.io/donate_to/${recv}/${child}/${sig}" -d "{}"`;
-                    curlDisplay.textContent = curlCmd;
-                    curlBtn.dataset.text = curlCmd;
-                    curlBtn.disabled = false;
-                } else {
-                    curlDisplay.textContent = "";
-                    curlBtn.dataset.text = "";
-                    curlBtn.disabled = true;
+                    // Determine which sign function exists
+                    let signed;
+                    // payload must be hex per CIP-8/30 signData
+                    const payloadHex = hexEncode(message);
+
+                    if (api.signData) {
+                        // Most wallet implementations (CIP-30) expose signData(address, payloadHex)
+                        signed = await api.signData(sender, payloadHex);
+                        // signed typically { signature: "hex..." } or hex string depending on wallet
+                    } else if (api.signMessage) {
+                        // fallback
+                        signed = await api.signMessage(sender, payloadHex);
+                    } else if (api.experimental && api.experimental.signData) {
+                        signed = await api.experimental.signData(sender, payloadHex);
+                    } else {
+                        alert("Yoroi không hỗ trợ hàm signData trong phiên bản này (hoặc API khác).");
+                        return;
+                    }
+
+                    // Extract signature hex
+                    let signatureHex = "";
+                    if (!signed) {
+                        alert("Không nhận được chữ ký từ Yoroi.");
+                        return;
+                    }
+                    // different wallets return different structures
+                    if (typeof signed === "string") {
+                        signatureHex = signed;
+                    } else if (signed.signature) {
+                        signatureHex = signed.signature;
+                    } else if (signed.coseSign1Hex) {
+                        signatureHex = signed.coseSign1Hex;
+                    } else if (signed.sig) {
+                        signatureHex = signed.sig;
+                    } else {
+                        // Last resort: stringify whole object
+                        signatureHex = JSON.stringify(signed);
+                    }
+
+                    // fill signature input
+                    sigInput.value = signatureHex;
+
+                    // generate curl
+                    const curl = `curl -L -X POST "https://scavenger.prod.gd.midnighttge.io/donate_to/${recv}/${sender}/${signatureHex}" -d "{}"`;
+                    curlDisplay.textContent = curl;
+                    copyCurlBtn.dataset.text = curl;
+                    copyCurlBtn.disabled = false;
+
+                    showCopyMsg(signBtn.nextElementSibling); // Signed!
+                } catch(err){
+                    console.error("Sign error:", err);
+                    alert("Lỗi khi gọi Yoroi để ký: " + (err && err.message ? err.message : String(err)));
                 }
-            });
+            };
 
             // Copy Curl
-            curlBtn.onclick = ()=>{
-                const text = curlBtn.dataset.text;
-                if(!text) return;
-                navigator.clipboard.writeText(text).then(()=>{
-                    const msg = curlBtn.nextElementSibling;
-                    msg.classList.add("show");
-                    setTimeout(()=>msg.classList.remove("show"),900);
-                });
+            copyCurlBtn.onclick = ()=>{
+                const t = copyCurlBtn.dataset.text || "";
+                if(!t) return;
+                navigator.clipboard.writeText(t).then(()=> showCopyMsg(copyCurlBtn.nextElementSibling));
             };
         });
     });
@@ -205,7 +283,7 @@ function generate(){
     });
 }
 
-// Xuất file .sh
+// Xuất file .sh (giữ nguyên logic cũ: dùng signature trong input)
 function exportShell(){
     const recv = document.getElementById("receiver").value.trim();
     if(!recv) return alert("Nhập receiver trước!");
@@ -213,17 +291,17 @@ function exportShell(){
     let script = "#!/bin/bash\n\n";
     script += "echo \"🚀 Bắt đầu donate...\"\n\n";
 
-    seeds.forEach((seed)=>{
-        seed.children.forEach((addr,index)=>{
-            const seedIndex = seeds.indexOf(seed);
-            const rowDiv = document.getElementById(`children-${seedIndex}`).children[index];
+    seeds.forEach((seed, sidx)=>{
+        seed.children.forEach((addr, index)=>{
+            const rowDiv = document.getElementById(`children-${sidx}`) && document.getElementById(`children-${sidx}`).children[index];
+            if(!rowDiv) return;
             const sigInput = rowDiv.querySelector(".sig-input");
-            const sig = sigInput.value.trim();
+            const sig = sigInput ? sigInput.value.trim() : "";
             if(!sig) return; // bỏ qua nếu chưa có chữ ký
-            const sender = seed.children[index];
+            const sender = addr;
             script += `curl -L -X POST "https://scavenger.prod.gd.midnighttge.io/donate_to/${recv}/${sender}/${sig}" -d "{}"\n`;
-			script += "echo -e '\\n-----------------------------------------------------------------------------------------\\n'\n";
-            script += "sleep 1\n"; // Delay 1 giây giữa các lệnh
+            script += "echo -e '\\n-----------------------------------------------------------------------------------------\\n'\n";
+            script += "sleep 1\n";
         });
     });
 
@@ -233,6 +311,12 @@ function exportShell(){
     link.download = "donate_all.sh";
     link.click();
 }
+
+// Initialize demo: add one seed and one address slot for convenience
+(function initDemo(){
+    seeds = [{name:"Import file txt chứa các địa chỉ donate các mỗi địa chỉ gửi trên 1 dòng", children: [""]}];
+    renderSeeds();
+})();
 
 </script>
 </body>
